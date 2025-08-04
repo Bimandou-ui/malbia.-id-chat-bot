@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Malbia Chat AI</title>
+<style>
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: #f4f4f4;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    background: #0b5e3d;
+    color: white;
+    padding: 15px;
+    text-align: center;
+    font-size: 1.5em;
+  }
+  .chat-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .message {
+    max-width: 80%;
+    margin-bottom: 12px;
+    padding: 12px 15px;
+    border-radius: 15px;
+    line-height: 1.4;
+    font-size: 16px;
+    display: inline-block;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .user-message {
+    background: #0b5e3d;
+    color: white;
+    margin-left: auto;
+  }
+  .ai-message {
+    background: white;
+    color: #222;
+    border: 1px solid #ddd;
+  }
+  .input-container {
+    display: flex;
+    padding: 10px;
+    background: white;
+    border-top: 1px solid #ccc;
+    align-items: center;
+  }
+  .input-container input[type="text"] {
+    flex: 1;
+    padding: 12px;
+    border-radius: 30px;
+    border: 1px solid #ccc;
+    font-size: 16px;
+    outline: none;
+  }
+  .input-container button {
+    margin-left: 10px;
+    background: #0b5e3d;
+    color: white;
+    border: none;
+    padding: 12px 16px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+  }
+  #filePreview {
+    max-width: 100px;
+    margin-right: 8px;
+    display: none;
+  }
+  .loading {
+    color: #777;
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+</style>
+
+<!-- MathJax untuk render LaTeX -->
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] },
+    options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+</head>
+<body>
+<header>Malbia Chat AI</header>
+<div class="chat-container" id="chatContainer"></div>
+<div class="input-container">
+  <input type="file" id="fileInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" style="display:none;" />
+  <img id="filePreview" />
+  <input type="text" id="userInput" placeholder="Ketik pesan..." />
+  <button onclick="document.getElementById('fileInput').click()">📎</button>
+  <button onclick="sendMessage()">➤</button>
+</div>
+
+<script>
+const API_KEY = "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";
+const API_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+const chatContainer = document.getElementById("chatContainer");
+const userInput = document.getElementById("userInput");
+const fileInput = document.getElementById("fileInput");
+const filePreview = document.getElementById("filePreview");
+
+let messages = [
+  { role: "system", content: "Kamu adalah asisten AI yang ramah, menjawab dalam bahasa Indonesia, dan jika ada rumus matematika gunakan LaTeX tanpa tanda dolar." }
+];
+
+let uploadedFile = null;
+fileInput.addEventListener("change", function (event) {
+  const file = event.target.files[0];
+  if (file) {
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        uploadedFile = { type: "image", data: e.target.result };
+        filePreview.src = e.target.result;
+        filePreview.style.display = "block";
+      };
+      reader.readAsDataURL(file);
+    } else {
+      uploadedFile = { type: "file", name: file.name };
+      filePreview.src = "https://cdn-icons-png.flaticon.com/512/337/337946.png"; // ikon dokumen
+      filePreview.style.display = "block";
+    }
+  }
+});
+
+function addMessage(content, role) {
+  const messageDiv = document.createElement("div");
+  messageDiv.classList.add("message", role === "user" ? "user-message" : "ai-message");
+  messageDiv.innerHTML = content;
+  chatContainer.appendChild(messageDiv);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+  if (window.MathJax) MathJax.typesetPromise([messageDiv]);
+}
+
+async function sendMessage() {
+  const text = userInput.value.trim();
+  if (!text && !uploadedFile) return;
+
+  if (text) addMessage(text, "user");
+  if (uploadedFile) {
+    if (uploadedFile.type === "image") {
+      addMessage('<img src="' + uploadedFile.data + '" style="max-width:150px;border-radius:8px;" />', "user");
+    } else {
+      addMessage('<b>📄 ' + uploadedFile.name + '</b>', "user");
+    }
+  }
+
+  userInput.value = "";
+  filePreview.style.display = "none";
+
+  const contentArray = [];
+  if (text) contentArray.push({ type: "text", text: text });
+  if (uploadedFile) {
+    if (uploadedFile.type === "image") {
+      contentArray.push({ type: "image_url", image_url: { url: uploadedFile.data } });
+    } else {
+      contentArray.push({ type: "text", text: "User mengunggah file: " + uploadedFile.name + " (analisa isi file jika memungkinkan)" });
+    }
+    uploadedFile = null;
+  }
+
+  messages.push({ role: "user", content: contentArray });
+
+  const loading = document.createElement("div");
+  loading.classList.add("loading");
+  loading.textContent = "AI sedang memproses...";
+  chatContainer.appendChild(loading);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        messages: messages
+      })
+    });
+
+    const data = await response.json();
+    loading.remove();
+
+    if (data.choices && data.choices.length > 0) {
+      const aiReply = data.choices[0].message.content;
+      addMessage(aiReply, "ai");
+      messages.push({ role: "assistant", content: aiReply });
+    } else {
+      addMessage("Terjadi kesalahan.", "ai");
+    }
+  } catch (error) {
+    console.error(error);
+    loading.remove();
+    addMessage("Gagal terhubung ke server.", "ai");
+  }
+}
+
+userInput.addEventListener("keyup", (e) => {
+  if (e.key === "Enter") sendMessage();
+});
+</script>
+</body>
+</html>
